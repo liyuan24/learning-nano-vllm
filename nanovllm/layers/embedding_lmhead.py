@@ -20,7 +20,7 @@ class VocabSplitEmbedding(nn.Module):
         self.vocab_size_per_rank = vocab_size // self.tp_size
         self.weights = nn.Parameter(torch.empty(self.vocab_size_per_rank, hidden_size))
         self.weights.weights_loader = self.weights_loader
-    
+
     def weights_loader(self, params: nn.Parameter, weights: torch.Tensor) -> None:
         shard_size = params.data.size(0)
         shard_start = shard_size * self.tp_rank
@@ -47,10 +47,11 @@ class VocabSplitEmbedding(nn.Module):
             dist.all_reduce(y, op=dist.ReduceOp.SUM)
         return y
 
+
 class ParallelLMHead(VocabSplitEmbedding):
     def __init__(self, vocab_size: int, hidden_size: int):
         super().__init__(vocab_size, hidden_size)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         x: [total_tokens, hidden_size]
@@ -63,10 +64,12 @@ class ParallelLMHead(VocabSplitEmbedding):
             x = x[lask_token_inds].contiguous()
         logits = F.linear(x, self.weights)
         if self.tp_size > 1:
-            all_logits = [torch.empty_like(logits) for _ in range(self.tp_size)] if self.tp_rank == 0 else None
+            all_logits = (
+                [torch.empty_like(logits) for _ in range(self.tp_size)]
+                if self.tp_rank == 0
+                else None
+            )
             # gather logits from all devices to all_logits list on rank 0
             dist.all_gather(logits, all_logits, dst=0)
             logits = torch.cat(all_logits, dim=1) if self.tp_rank == 0 else None
         return logits
-
-
