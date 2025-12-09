@@ -7,6 +7,7 @@ from flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
 
 from nanovllm.utils.context import get_context
 
+
 @triton.jit
 def store_kv_cache_kernel(
     k_ptr: torch.Tensor,
@@ -67,11 +68,9 @@ def store_kv_cache(
         slot_mapping: [total_tokens], the absolute position in kv cache block for each token
     """
     N, num_kv_heads, head_dim = k.shape
-    D = num_kv_heads * head_dim # the stride of k and v tensor in first dimension
+    D = num_kv_heads * head_dim  # the stride of k and v tensor in first dimension
     # launch a triton kernel to store the new k and v tensors in parallel for each token
     store_kv_cache_kernel[(N,)](k, D, v, D, k_cache, v_cache, slot_mapping, D)
-
-
 
 
 class Attention(nn.Module):
@@ -112,7 +111,9 @@ class Attention(nn.Module):
             if context.block_tables:
                 k, v = k_cache, v_cache
             o = flash_attn_varlen_func(
-                q, k, v,
+                q,
+                k,
+                v,
                 cu_seqlens_q=context.cu_seqlens_q,
                 cu_seqlens_k=context.cu_seqlens_k,
                 max_seqlen_q=context.max_seqlen_q,
@@ -123,7 +124,9 @@ class Attention(nn.Module):
             )
         else:
             o = flash_attn_with_kvcache(
-                q, k_cache, v_cache,
+                q,
+                k_cache,
+                v_cache,
                 causal=True,
                 softmax_scale=self.scale,
                 block_table=context.block_tables,
