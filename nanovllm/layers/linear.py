@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 from torch import dist, nn
 import torch
 from torch.nn import functional as F
@@ -95,9 +95,27 @@ class QKVParallelLinear(ColumnParallelLinear):
         param_data.copy_(loaded_data)
 
 
+class CombinedColumnParallelLinear(ColumnParallelLinear):
+    """
+    Multiple linear projects are combined together to save the number of kernels.
+    """
+    def __init__(self, input_size: int, output_sizes: List[int], shard_id: int):
+        self.output_sizes = output_sizes
+        super().__init__(input_size, sum(output_sizes))
+    
+    def weights_loader(self, params: nn.Parameter, weights: torch.Tensor, loaded_shard_id: str) -> None:
+        output_size = self.output_sizes[loaded_shard_id]
+        shard_start = sum(self.output_sizes[:loaded_shard_id]) // self.tp_size
+        shard_size = output_size // self.tp_size
+        loaded_data = weights.chunk(self.tp_size, dim=0)[self.tp_rank]
+        param_data = params.data.narrow(0, shard_start, shard_size)
+        param_data.copy_(loaded_data)
+        
+
+
 class RowParallelLinear(LinearBase):
     """
-    Used for matrix multiplication W * x^T. The weights W are split across multiple devices along its row dimension.
+    Used for matrix multiplication x * W^T. The weights W^T are split across multiple devices along its row dimension.
     So each GPU will only own one shard of the weights after the split.
     """
 
