@@ -99,18 +99,20 @@ class CombinedColumnParallelLinear(ColumnParallelLinear):
     """
     Multiple linear projects are combined together to save the number of kernels.
     """
+
     def __init__(self, input_size: int, output_sizes: List[int], shard_id: int):
         self.output_sizes = output_sizes
         super().__init__(input_size, sum(output_sizes))
-    
-    def weights_loader(self, params: nn.Parameter, weights: torch.Tensor, loaded_shard_id: str) -> None:
+
+    def weights_loader(
+        self, params: nn.Parameter, weights: torch.Tensor, loaded_shard_id: str
+    ) -> None:
         output_size = self.output_sizes[loaded_shard_id]
         shard_start = sum(self.output_sizes[:loaded_shard_id]) // self.tp_size
         shard_size = output_size // self.tp_size
         loaded_data = weights.chunk(self.tp_size, dim=0)[self.tp_rank]
         param_data = params.data.narrow(0, shard_start, shard_size)
         param_data.copy_(loaded_data)
-        
 
 
 class RowParallelLinear(LinearBase):

@@ -7,6 +7,12 @@ import torch
 class Context:
     is_prefill: bool = False
     cu_seqlens_q: Optional[torch.Tensor] = None
+    cu_seqlens_k: Optional[torch.Tensor] = None
+    max_seqlen_q: Optional[int] = None
+    max_seqlen_k: Optional[int] = None
+    block_tables: Optional[torch.Tensor] = None
+    context_lens: Optional[torch.Tensor] = None
+    slot_mapping: Optional[torch.Tensor] = None
 
 
 _CONTEXT = Context()
