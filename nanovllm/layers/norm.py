@@ -8,12 +8,12 @@ import torch
 
 
 class RMSNorm(nn.Module):
-    def __init__(self, hidden_size: int, eps: float = 1e-6) -> None:
+    def __init__(self, norm_size: int, eps: float = 1e-6) -> None:
         super().__init__()
-        self.hidden_size = hidden_size
+        self.norm_size = norm_size
         self.eps = eps
         # notice that the weight data type is the same as model data type, e.g. bfloat16
-        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.weight = nn.Parameter(torch.ones(norm_size))
 
     @torch.compile
     def rms_norm(self, x: torch.Tensor) -> torch.Tensor:

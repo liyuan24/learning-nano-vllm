@@ -1,6 +1,7 @@
 from typing import List, Optional
-from torch import dist, nn
 import torch
+import torch.distributed as dist
+from torch import nn
 from torch.nn import functional as F
 
 

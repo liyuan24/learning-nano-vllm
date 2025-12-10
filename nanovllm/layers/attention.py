@@ -74,20 +74,9 @@ def store_kv_cache(
 
 
 class Attention(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int,
-        head_dim: int,
-        total_num_heads: int,
-        total_num_kv_heads: Optional[int] = None,
-        scale: Optional[float] = None,
-    ):
+    def __init__(self, scale: float):
         super().__init__()
-        self.hidden_size = hidden_size
-        self.head_dim = head_dim
-        self.total_num_heads = total_num_heads
-        self.total_num_kv_heads = total_num_kv_heads or total_num_heads
-        self.scale = scale or self.head_dim**-0.5
+        self.scale = scale
         self.k_cache = self.v_cache = torch.tensor([])
 
     def forward(

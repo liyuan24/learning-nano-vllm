@@ -2,8 +2,9 @@
 This is the embedding layer and lm head that can be splitted across multiple devices
 """
 
-from torch import dist, nn
 import torch
+import torch.distributed as dist
+from torch import nn
 from torch.nn import functional as F
 
 from nanovllm.utils.context import get_context
