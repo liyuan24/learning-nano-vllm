@@ -58,10 +58,12 @@ def test_rms_norm_with_residual():
     assert new_residual.shape == residual.shape
 
     # Check that new_residual is x + residual (in original dtype)
-    expected_residual = original_x+residual_original
+    expected_residual = original_x + residual_original
     # assert torch.allclose(new_residual, expected_residual, atol=1e-5)
     assert torch.allclose(new_residual, expected_residual, atol=1e-5)
     # Check that output is normalized
-    rms_torch = F.rms_norm(original_x+residual_original, (hidden_size,), rms_norm.weight, rms_norm.eps)
+    rms_torch = F.rms_norm(
+        original_x + residual_original, (hidden_size,), rms_norm.weight, rms_norm.eps
+    )
     # relax the tolerance
     assert torch.allclose(output, rms_torch, atol=1e-1)
