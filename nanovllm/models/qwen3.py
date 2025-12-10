@@ -7,6 +7,7 @@ from nanovllm.layers.attention import Attention
 from nanovllm.layers.linear import QKVParallelLinear, RowParallelLinear
 from nanovllm.layers.norm import RMSNorm
 from nanovllm.layers.rope import RoPE
+from nanovllm.utils.context import set_context
 
 
 class Qwen3Attention(nn.Module):
@@ -89,30 +90,3 @@ class Qwen3Attention(nn.Module):
         o = o.flatten(1, -1)
         # apply output projection, shape: [total_tokens, hidden_size]
         return self.o_proj(o)
-
-
-if __name__ == "__main__":
-    hidden_size = 1024
-    total_num_heads = 32
-    total_num_kv_heads = 32
-    max_position_embeddings = 10
-    num_tokens = 4
-    rank = 0
-    world_size = 1
-    dist.init_process_group(
-        backend="nccl",
-        init_method="tcp://localhost:2333",
-        rank=rank,
-        world_size=world_size,
-    )
-    torch.set_default_dtype(torch.bfloat16)
-    torch.set_default_device("cuda")
-    qwen3_attention = Qwen3Attention(
-        hidden_size, total_num_heads, total_num_kv_heads, max_position_embeddings
-    )
-    x = torch.randn(num_tokens, hidden_size).to(torch.bfloat16)
-    position_ids = torch.arange(num_tokens).to(torch.long)
-    with torch.no_grad():
-        o = qwen3_attention(x, position_ids)
-    print(o.shape)
-    dist.destroy_process_group()
