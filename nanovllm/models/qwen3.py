@@ -249,6 +249,14 @@ class Qwen3ForCausalLM(nn.Module):
     """
     Qwen3 model for causal language modeling with LM head.
     """
+    # for some layers doing inference, we will pack the weights together for efficiency. But in HF weights, they are separated.
+    packed_module_mapping = {
+        'q_proj': ('qkv_proj', 'q'),
+        'k_proj': ('qkv_proj', 'k'),
+        'v_proj': ('qkv_proj', 'v'),
+        'gate_proj': ('up_gate_proj', 0),
+        'up_proj': ('up_gate_proj', 1),
+    }
 
     def __init__(
         self,
