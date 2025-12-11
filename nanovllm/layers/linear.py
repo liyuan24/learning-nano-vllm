@@ -101,7 +101,7 @@ class CombinedColumnParallelLinear(ColumnParallelLinear):
     Multiple linear projects are combined together to save the number of kernels.
     """
 
-    def __init__(self, input_size: int, output_sizes: List[int], shard_id: int):
+    def __init__(self, input_size: int, output_sizes: List[int]):
         self.output_sizes = output_sizes
         super().__init__(input_size, sum(output_sizes))
 

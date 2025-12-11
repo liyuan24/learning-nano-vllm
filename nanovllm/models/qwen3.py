@@ -4,7 +4,12 @@ import torch.distributed as dist
 import torch.nn as nn
 
 from nanovllm.layers.attention import Attention
-from nanovllm.layers.linear import QKVParallelLinear, RowParallelLinear
+from nanovllm.layers.linear import (
+    CombinedColumnParallelLinear,
+    QKVParallelLinear,
+    RowParallelLinear,
+)
+from nanovllm.layers.activation import SiluAndMul
 from nanovllm.layers.norm import RMSNorm
 from nanovllm.layers.rope import RoPE
 from nanovllm.utils.context import set_context
@@ -90,3 +95,36 @@ class Qwen3Attention(nn.Module):
         o = o.flatten(1, -1)
         # apply output projection, shape: [total_tokens, hidden_size]
         return self.o_proj(o)
+
+
+class Qwen3MLP(nn.Module):
+    """
+    Per device MLP layer for Qwen3.
+    """
+
+    def __init__(self, hidden_size: int, intermediate_size: int):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.up_gate_proj = CombinedColumnParallelLinear(
+            input_size=hidden_size, output_sizes=[intermediate_size, intermediate_size]
+        )
+        self.down_proj = RowParallelLinear(
+            input_size=intermediate_size, output_size=hidden_size
+        )
+        self.activation_fn = SiluAndMul()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Arguments:
+            x: [total_tokens, hidden_size]
+        Returns:
+            output: [total_tokens, hidden_size]
+        """
+        # shape: [total_tokens, 2 * intermediate_size / tp_size]
+        x = self.up_gate_proj(x)
+        # shape: [total_tokens, intermediate_size / tp_size]
+        x = self.activation_fn(x)
+        # shape: [total_tokens, hidden_size]
+        x = self.down_proj(x)
+        return x
