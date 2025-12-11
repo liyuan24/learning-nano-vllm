@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 import torch
 import torch.distributed as dist
 import torch.nn as nn
@@ -128,3 +128,64 @@ class Qwen3MLP(nn.Module):
         # shape: [total_tokens, hidden_size]
         x = self.down_proj(x)
         return x
+
+
+class Qwen3Block(nn.Module):
+    """
+    Per device block for Qwen3, which consists of an attention layer and an MLP layer
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        total_num_heads: int,
+        total_num_kv_heads: int,
+        max_position_embeddings: int,
+        intermediate_size: int,
+        rope_theta: float = 10000,
+        rms_norm_eps: float = 1e-6,
+    ):
+        super().__init__()
+        self.hidden_size = hidden_size
+        self.intermediate_size = intermediate_size
+        self.attention = Qwen3Attention(
+            hidden_size,
+            total_num_heads,
+            total_num_kv_heads,
+            max_position_embeddings,
+            rope_theta,
+            rms_norm_eps,
+        )
+        self.mlp = Qwen3MLP(hidden_size, intermediate_size)
+        self.attn_norm = RMSNorm(norm_size=hidden_size, eps=rms_norm_eps)
+        self.mlp_norm = RMSNorm(norm_size=hidden_size, eps=rms_norm_eps)
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        position_ids: torch.Tensor,
+        residual: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        we can simply do
+        x = x + self.self_attn(positions, norm(hiddent_states))
+        x = x + self.mlp(norm(x))
+
+        But we can see that add is one kernel and norm is another kernel. Here we fuse the add and norm into one kernel.
+        
+        Arguments:
+            x: [total_tokens, hidden_size]
+            position_ids: [total_tokens]
+            residual: [total_tokens, hidden_size]
+        Returns:
+            output: [total_tokens, hidden_size]
+        """
+        if residual is None:
+            x, residual = self.attn_norm(x), x
+        else:
+            x, residual = self.attn_norm(x, residual)
+        # shape: [total_tokens, hidden_size]
+        x = self.attention(x, position_ids)
+        x, residual = self.mlp_norm(x, residual)
+        x = self.mlp(x)
+        return x, residual
