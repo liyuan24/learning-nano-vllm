@@ -12,6 +12,7 @@ from nanovllm.layers.linear import (
 from nanovllm.layers.activation import SiluAndMul
 from nanovllm.layers.norm import RMSNorm
 from nanovllm.layers.rope import RoPE
+from nanovllm.layers.embedding_lmhead import ParallelLMHead, VocabSplitEmbedding
 from nanovllm.utils.context import set_context
 
 
@@ -172,7 +173,7 @@ class Qwen3Block(nn.Module):
         x = x + self.mlp(norm(x))
 
         But we can see that add is one kernel and norm is another kernel. Here we fuse the add and norm into one kernel.
-        
+
         Arguments:
             x: [total_tokens, hidden_size]
             position_ids: [total_tokens]
@@ -189,3 +190,109 @@ class Qwen3Block(nn.Module):
         x, residual = self.mlp_norm(x, residual)
         x = self.mlp(x)
         return x, residual
+
+
+class Qwen3Model(nn.Module):
+    """
+    Qwen3 model with multiple blocks and a final layer norm before the vocab projection.
+    """
+
+    def __init__(
+        self,
+        num_hidden_layers: int,
+        vocab_size: int,
+        hidden_size: int,
+        total_num_heads: int,
+        total_num_kv_heads: int,
+        max_position_embeddings: int,
+        intermediate_size: int,
+        rope_theta: float = 10000,
+        rms_norm_eps: float = 1e-6,
+    ):
+        super().__init__()
+        self.blocks = nn.ModuleList(
+            [
+                Qwen3Block(
+                    hidden_size,
+                    total_num_heads,
+                    total_num_kv_heads,
+                    max_position_embeddings,
+                    intermediate_size,
+                    rope_theta,
+                    rms_norm_eps,
+                )
+                for _ in range(num_hidden_layers)
+            ]
+        )
+        self.norm = RMSNorm(norm_size=hidden_size, eps=rms_norm_eps)
+        self.embedding_layer = VocabSplitEmbedding(vocab_size, hidden_size)
+
+    def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
+        """
+        Arguments:
+            x: [total_tokens]
+            position_ids: [total_tokens]
+        Returns:
+            output: [total_tokens, hidden_size]
+        """
+        # shape: [total_tokens, hidden_size]
+        x = self.embedding_layer(x)
+        residual = None
+        for block in self.blocks:
+            x, residual = block(x, position_ids, residual)
+        # post-norm
+        x, _ = self.norm(x, residual)
+        return x
+
+
+class Qwen3ForCausalLM(nn.Module):
+    """
+    Qwen3 model for causal language modeling with LM head.
+    """
+    def __init__(
+        self,
+        num_hidden_layers: int,
+        vocab_size: int,
+        hidden_size: int,
+        total_num_heads: int,
+        total_num_kv_heads: int,
+        max_position_embeddings: int,
+        intermediate_size: int,
+        tie_word_embeddings: bool = False,
+        rope_theta: float = 10000,
+        rms_norm_eps: float = 1e-6,
+    ):
+        super().__init__()
+        self.model = Qwen3Model(
+            num_hidden_layers,
+            vocab_size,
+            hidden_size,
+            total_num_heads,
+            total_num_kv_heads,
+            max_position_embeddings,
+            intermediate_size,
+            rope_theta,
+            rms_norm_eps,
+        )
+        self.lm_head = ParallelLMHead(vocab_size, hidden_size)
+        if tie_word_embeddings:
+            self.lm_head.weights.data = self.model.embedding_layer.weights.data
+
+    def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
+        """
+        Arguments:
+            x: [total_tokens]
+            position_ids: [total_tokens]
+        Returns:
+            output: [total_tokens, hidden_size]
+        """
+        return self.model(x, position_ids)
+
+    def compute_logits(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Arguments:
+            x: [total_tokens, hidden_size]
+        Returns:
+            output: [total_tokens, vocab_size]
+        """
+        return self.lm_head(x)
