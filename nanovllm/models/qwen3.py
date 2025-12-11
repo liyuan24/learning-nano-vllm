@@ -249,6 +249,7 @@ class Qwen3ForCausalLM(nn.Module):
     """
     Qwen3 model for causal language modeling with LM head.
     """
+
     def __init__(
         self,
         num_hidden_layers: int,
