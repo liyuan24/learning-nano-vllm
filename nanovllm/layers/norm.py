@@ -22,7 +22,6 @@ class RMSNorm(nn.Module):
 
         kernel fusion for the point-wise multiplication and addition
         """
-        print(f"address of x: {id(x)}")
         orig_dtype = x.dtype
         # convert to float32 for better precision, create a new tensor
         x = x.float()

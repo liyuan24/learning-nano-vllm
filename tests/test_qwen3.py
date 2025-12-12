@@ -1,3 +1,7 @@
+"""
+pytest tests/test_qwen3.py -v
+"""
+
 import torch
 import torch.distributed as dist
 from nanovllm.models.qwen3 import (
@@ -8,10 +12,6 @@ from nanovllm.models.qwen3 import (
     Qwen3Model,
 )
 from nanovllm.utils.context import set_context
-
-"""
-pytest tests/test_qwen3.py -v
-"""
 
 
 def test_qwen3_attention():
@@ -168,9 +168,10 @@ def test_qwen3_block():
     """
     # Test parameters
     hidden_size = 1024
+    head_dim = 128
     intermediate_size = hidden_size * 4
-    total_num_heads = 32
-    total_num_kv_heads = 32
+    total_num_heads = 16
+    total_num_kv_heads = 8
     max_position_embeddings = 10
     num_tokens = 4
     rank = 0
@@ -233,9 +234,10 @@ def test_qwen3_block():
         total_num_kv_heads,
         max_position_embeddings,
         intermediate_size,
+        head_dim=head_dim,
     )
-    qwen3_block.attention.k_cache = kv_cache[0][0]  # each layer has its own kv cache
-    qwen3_block.attention.v_cache = kv_cache[1][0]
+    qwen3_block.self_attn.k_cache = kv_cache[0][0]  # each layer has its own kv cache
+    qwen3_block.self_attn.v_cache = kv_cache[1][0]
 
     # Create input tensors
     x = torch.randn(num_tokens, hidden_size).to(torch.bfloat16)
@@ -268,8 +270,9 @@ def test_qwen3_model():
     # Test parameters
     hidden_size = 1024
     intermediate_size = hidden_size * 4
-    total_num_heads = 32
-    total_num_kv_heads = 32
+    head_dim = 128
+    total_num_heads = 16
+    total_num_kv_heads = 8
     max_position_embeddings = 10
     num_hidden_layers = 4
     vocab_size = 1024
@@ -334,10 +337,11 @@ def test_qwen3_model():
         total_num_kv_heads,
         max_position_embeddings,
         intermediate_size,
+        head_dim=head_dim,
     )
     for i in range(num_hidden_layers):
-        qwen3_model.blocks[i].attention.k_cache = kv_cache[0][i]
-        qwen3_model.blocks[i].attention.v_cache = kv_cache[1][i]
+        qwen3_model.layers[i].self_attn.k_cache = kv_cache[0][i]
+        qwen3_model.layers[i].self_attn.v_cache = kv_cache[1][i]
 
     # Create input tensors
     x = torch.randint(0, vocab_size, (num_tokens,)).to(torch.int32)
@@ -366,8 +370,9 @@ def test_qwen3_for_causal_lm():
     # Test parameters
     hidden_size = 1024
     intermediate_size = hidden_size * 4
-    total_num_heads = 32
-    total_num_kv_heads = 32
+    head_dim = 128
+    total_num_heads = 16
+    total_num_kv_heads = 8
     max_position_embeddings = 10
     num_hidden_layers = 4
     vocab_size = 1024
@@ -433,10 +438,11 @@ def test_qwen3_for_causal_lm():
         max_position_embeddings,
         intermediate_size,
         tie_word_embeddings=True,
+        head_dim=head_dim,
     )
     for i in range(num_hidden_layers):
-        qwen3.model.blocks[i].attention.k_cache = kv_cache[0][i]
-        qwen3.model.blocks[i].attention.v_cache = kv_cache[1][i]
+        qwen3.model.layers[i].self_attn.k_cache = kv_cache[0][i]
+        qwen3.model.layers[i].self_attn.v_cache = kv_cache[1][i]
 
     # Create input tensors
     x = torch.randint(0, vocab_size, (num_tokens,)).to(torch.int32)

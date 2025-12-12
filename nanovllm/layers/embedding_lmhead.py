@@ -19,8 +19,8 @@ class VocabSplitEmbedding(nn.Module):
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.vocab_size_per_rank = vocab_size // self.tp_size
-        self.weights = nn.Parameter(torch.empty(self.vocab_size_per_rank, hidden_size))
-        self.weights.weights_loader = self.weights_loader
+        self.weight = nn.Parameter(torch.empty(self.vocab_size_per_rank, hidden_size))
+        self.weight.weights_loader = self.weights_loader
 
     def weights_loader(self, params: nn.Parameter, weights: torch.Tensor) -> None:
         shard_size = params.data.size(0)
@@ -40,7 +40,7 @@ class VocabSplitEmbedding(nn.Module):
             shard_end = shard_start + self.vocab_size_per_rank
             shard_mask = (x >= shard_start) & (x < shard_end)
             x = shard_mask * (x - shard_start)
-        y = F.embedding(x, self.weights)
+        y = F.embedding(x, self.weight)
         if self.tp_size > 1:
             # zero out the tokens that are not processed by this device
             y = shard_mask.unsqueeze(1) * y
@@ -63,7 +63,7 @@ class ParallelLMHead(VocabSplitEmbedding):
             # the last token ids for all sequences
             lask_token_inds = context.cu_seqlens_q[1:] - 1
             x = x[lask_token_inds].contiguous()
-        logits = F.linear(x, self.weights)
+        logits = F.linear(x, self.weight)
         if self.tp_size > 1:
             all_logits = (
                 [torch.empty_like(logits) for _ in range(self.tp_size)]

@@ -27,14 +27,12 @@ class Qwen3Attention(nn.Module):
         total_num_heads: int,
         total_num_kv_heads: int,
         max_position_embeddings: int,
+        head_dim: Optional[int] = None,
         rope_theta: float = 10000,
         rms_norm_eps: float = 1e-6,
     ):
         super().__init__()
-        assert (
-            hidden_size % total_num_heads == 0
-        ), "hidden_size must be divisible by total_num_heads"
-        self.head_dim = hidden_size // total_num_heads
+        self.head_dim = head_dim or hidden_size // total_num_heads
         tp_size = dist.get_world_size()
         self.hidden_size = hidden_size
         assert (
@@ -57,7 +55,9 @@ class Qwen3Attention(nn.Module):
             total_num_heads=total_num_heads,
             total_num_kv_heads=total_num_kv_heads,
         )
-        self.o_proj = RowParallelLinear(input_size=hidden_size, output_size=hidden_size)
+        self.o_proj = RowParallelLinear(
+            input_size=total_num_heads * self.head_dim, output_size=hidden_size
+        )
         self.attn = Attention(scale=self.head_dim**-0.5)
         self.q_norm = RMSNorm(norm_size=self.head_dim, eps=rms_norm_eps)
         self.k_norm = RMSNorm(norm_size=self.head_dim, eps=rms_norm_eps)
@@ -143,23 +143,25 @@ class Qwen3Block(nn.Module):
         total_num_kv_heads: int,
         max_position_embeddings: int,
         intermediate_size: int,
+        head_dim: Optional[int] = None,
         rope_theta: float = 10000,
         rms_norm_eps: float = 1e-6,
     ):
         super().__init__()
         self.hidden_size = hidden_size
         self.intermediate_size = intermediate_size
-        self.attention = Qwen3Attention(
+        self.self_attn = Qwen3Attention(
             hidden_size,
             total_num_heads,
             total_num_kv_heads,
             max_position_embeddings,
+            head_dim,
             rope_theta,
             rms_norm_eps,
         )
         self.mlp = Qwen3MLP(hidden_size, intermediate_size)
-        self.attn_norm = RMSNorm(norm_size=hidden_size, eps=rms_norm_eps)
-        self.mlp_norm = RMSNorm(norm_size=hidden_size, eps=rms_norm_eps)
+        self.input_layernorm = RMSNorm(norm_size=hidden_size, eps=rms_norm_eps)
+        self.post_attention_layernorm = RMSNorm(norm_size=hidden_size, eps=rms_norm_eps)
 
     def forward(
         self,
@@ -182,12 +184,12 @@ class Qwen3Block(nn.Module):
             output: [total_tokens, hidden_size]
         """
         if residual is None:
-            x, residual = self.attn_norm(x), x
+            x, residual = self.input_layernorm(x), x
         else:
-            x, residual = self.attn_norm(x, residual)
+            x, residual = self.input_layernorm(x, residual)
         # shape: [total_tokens, hidden_size]
-        x = self.attention(x, position_ids)
-        x, residual = self.mlp_norm(x, residual)
+        x = self.self_attn(x, position_ids)
+        x, residual = self.post_attention_layernorm(x, residual)
         x = self.mlp(x)
         return x, residual
 
@@ -206,11 +208,12 @@ class Qwen3Model(nn.Module):
         total_num_kv_heads: int,
         max_position_embeddings: int,
         intermediate_size: int,
+        head_dim: Optional[int] = None,
         rope_theta: float = 10000,
         rms_norm_eps: float = 1e-6,
     ):
         super().__init__()
-        self.blocks = nn.ModuleList(
+        self.layers = nn.ModuleList(
             [
                 Qwen3Block(
                     hidden_size,
@@ -218,6 +221,7 @@ class Qwen3Model(nn.Module):
                     total_num_kv_heads,
                     max_position_embeddings,
                     intermediate_size,
+                    head_dim,
                     rope_theta,
                     rms_norm_eps,
                 )
@@ -225,7 +229,7 @@ class Qwen3Model(nn.Module):
             ]
         )
         self.norm = RMSNorm(norm_size=hidden_size, eps=rms_norm_eps)
-        self.embedding_layer = VocabSplitEmbedding(vocab_size, hidden_size)
+        self.embed_tokens = VocabSplitEmbedding(vocab_size, hidden_size)
 
     def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
         """
@@ -236,10 +240,10 @@ class Qwen3Model(nn.Module):
             output: [total_tokens, hidden_size]
         """
         # shape: [total_tokens, hidden_size]
-        x = self.embedding_layer(x)
+        x = self.embed_tokens(x)
         residual = None
-        for block in self.blocks:
-            x, residual = block(x, position_ids, residual)
+        for layer in self.layers:
+            x, residual = layer(x, position_ids, residual)
         # post-norm
         x, _ = self.norm(x, residual)
         return x
@@ -249,13 +253,14 @@ class Qwen3ForCausalLM(nn.Module):
     """
     Qwen3 model for causal language modeling with LM head.
     """
+
     # for some layers doing inference, we will pack the weights together for efficiency. But in HF weights, they are separated.
     packed_module_mapping = {
-        'q_proj': ('qkv_proj', 'q'),
-        'k_proj': ('qkv_proj', 'k'),
-        'v_proj': ('qkv_proj', 'v'),
-        'gate_proj': ('up_gate_proj', 0),
-        'up_proj': ('up_gate_proj', 1),
+        "q_proj": ("qkv_proj", "q"),
+        "k_proj": ("qkv_proj", "k"),
+        "v_proj": ("qkv_proj", "v"),
+        "gate_proj": ("up_gate_proj", 0),
+        "up_proj": ("up_gate_proj", 1),
     }
 
     def __init__(
@@ -267,6 +272,7 @@ class Qwen3ForCausalLM(nn.Module):
         total_num_kv_heads: int,
         max_position_embeddings: int,
         intermediate_size: int,
+        head_dim: Optional[int] = None,
         tie_word_embeddings: bool = False,
         rope_theta: float = 10000,
         rms_norm_eps: float = 1e-6,
@@ -280,12 +286,13 @@ class Qwen3ForCausalLM(nn.Module):
             total_num_kv_heads,
             max_position_embeddings,
             intermediate_size,
+            head_dim,
             rope_theta,
             rms_norm_eps,
         )
         self.lm_head = ParallelLMHead(vocab_size, hidden_size)
         if tie_word_embeddings:
-            self.lm_head.weights.data = self.model.embedding_layer.weights.data
+            self.lm_head.weight.data = self.model.embed_tokens.weight.data
 
     def forward(self, x: torch.Tensor, position_ids: torch.Tensor) -> torch.Tensor:
         """

@@ -12,8 +12,8 @@ class LinearBase(nn.Module):
         self.output_size = output_size
         self.tp_dim = tp_dim
         self.tp_rank = dist.get_rank()
-        self.weights = nn.Parameter(torch.empty(output_size, input_size))
-        self.weights.weights_loader = self.weights_loader
+        self.weight = nn.Parameter(torch.empty(output_size, input_size))
+        self.weight.weights_loader = self.weights_loader
 
     def weights_loader(self, params: nn.Parameter, weights: torch.Tensor) -> None:
         shard_size = params.data.size(self.tp_dim)
@@ -41,7 +41,7 @@ class ColumnParallelLinear(LinearBase):
         x: [total_tokens, input_size]
         output: [total_tokens, output_size_per_rank]
         """
-        return F.linear(x, self.weights)
+        return F.linear(x, self.weight)
 
 
 class QKVParallelLinear(ColumnParallelLinear):
@@ -103,6 +103,7 @@ class CombinedColumnParallelLinear(ColumnParallelLinear):
 
     def __init__(self, input_size: int, output_sizes: List[int]):
         self.output_sizes = output_sizes
+        self.tp_size = dist.get_world_size()
         super().__init__(input_size, sum(output_sizes))
 
     def weights_loader(
@@ -136,7 +137,7 @@ class RowParallelLinear(LinearBase):
         x: [total_tokens, input_size_per_rank]
         output: [total_tokens, output_size]
         """
-        y = F.linear(x, self.weights)
+        y = F.linear(x, self.weight)
         # when multiple devices, we need to reduce across all devices by summing up the outputs
         if dist.get_world_size() > 1:
             dist.all_reduce(y, op=dist.ReduceOp.SUM)
