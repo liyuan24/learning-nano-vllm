@@ -14,5 +14,7 @@ class Sampler(nn.Module):
         # exponential distribution
         # median = ln(2) / lambda ~= 0.693 / lambda
         # 95th Percentile = ln(20) / lambda ~= 3.00 / lambda
-        sample_tokens = probs.div_(torch.empty_like(probs).exponential_(1).clamp_min_(1e-10)).argmax(dim=-1)
+        sample_tokens = probs.div_(
+            torch.empty_like(probs).exponential_(1).clamp_min_(1e-10)
+        ).argmax(dim=-1)
         return sample_tokens
