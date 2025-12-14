@@ -7,8 +7,9 @@ class Sampler(nn.Module):
         super().__init__()
 
     @torch.compile
-    def forward(self, logits: torch.Tensor) -> torch.Tensor:
+    def forward(self, logits: torch.Tensor, temperatures: torch.Tensor) -> torch.Tensor:
         # shape: [n_seqs, vocab_size]
+        logits = logits.float().div_(temperatures.unsqueeze(1))
         probs = logits.softmax(dim=-1)
         # Gumbel-max sampling
         # exponential distribution

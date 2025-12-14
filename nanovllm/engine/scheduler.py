@@ -9,15 +9,17 @@ class Scheduler:
     def __init__(self, config: Config):
         self.max_num_seqs = config.max_num_seqs
         self.max_num_batched_tokens = config.max_num_batched_tokens
-        self.block_manager = BlockManager(config.num_kv_cache_blocks, config.kv_cache_block_size)
+        self.block_manager = BlockManager(
+            config.num_kv_cache_blocks, config.kv_cache_block_size
+        )
         self.eos_token_id = config.eos_token_id
         self.running: deque[Sequence] = deque[Sequence]()
         self.waiting: deque[Sequence] = deque[Sequence]()
-    
+
     def add_sequence(self, sequence: Sequence) -> None:
         # add sequence for prefilling
         self.waiting.append(sequence)
-    
+
     def schedule(self) -> Tuple[List[Sequence], bool]:
         """
         schedule sequences for prefilling or decoding from the waiting or running queue.
@@ -29,7 +31,11 @@ class Scheduler:
         num_batched_tokens = 0
         while self.waiting and num_seqs < self.max_num_seqs:
             seq = self.waiting[0]
-            if len(seq) + num_batched_tokens > self.max_num_batched_tokens or not self.block_manager.can_allocate(seq):
+            if len(
+                seq
+            ) + num_batched_tokens > self.max_num_batched_tokens or not self.block_manager.can_allocate(
+                seq
+            ):
                 break
             num_seqs += 1
             # allocate blocks for the sequence
@@ -49,7 +55,9 @@ class Scheduler:
             seq = self.running.popleft()
             while not self.block_manager.can_append(seq):
                 if self.running:
-                    self.preempt(self.running.pop()) # remove the right most sequence from running queue
+                    self.preempt(
+                        self.running.pop()
+                    )  # remove the right most sequence from running queue
                 else:
                     self.preempt(seq)
                     break
@@ -74,7 +82,9 @@ class Scheduler:
         """
         for seq, token_id in zip(sequences, token_ids):
             seq.append_token(token_id)
-            if (not seq.ignore_eos and token_id == self.eos_token_id) or len(seq) >= seq.max_tokens:
+            if (not seq.ignore_eos and token_id == self.eos_token_id) or len(
+                seq
+            ) >= seq.max_tokens:
                 seq.status = SequenceStatus.FINISHED
                 self.block_manager.deallocate(seq)
                 self.running.remove(seq)

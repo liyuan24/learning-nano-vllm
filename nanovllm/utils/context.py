@@ -43,3 +43,8 @@ def set_context(
         context_lens,
         slot_mapping,
     )
+
+
+def reset_context() -> None:
+    global _CONTEXT
+    _CONTEXT = Context()

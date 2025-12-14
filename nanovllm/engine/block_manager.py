@@ -140,6 +140,6 @@ class BlockManager:
 
     def _deallocate_block(self, block_id: int) -> None:
         block = self.blocks[block_id]
-        assert block.ref_count == 0, "reference count should be 0 when deallocating"block.reset()
+        assert block.ref_count == 0, "reference count should be 0 when deallocating"
         self.free_blocks.append(block_id)
         self.used_blocks.remove(block_id)

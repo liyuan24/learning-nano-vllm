@@ -17,7 +17,9 @@ class Sequence:
     counter = count()
     block_size = 256
 
-    def __init__(self, token_ids: List[int], sampling_params: SamplingParams):
+    def __init__(
+        self, token_ids: List[int], sampling_params: SamplingParams = SamplingParams()
+    ):
         self.id = next(Sequence.counter)
         self.token_ids = copy(token_ids)
         self.status = SequenceStatus.WAITING
@@ -39,6 +41,14 @@ class Sequence:
     @property
     def num_blocks(self) -> int:
         return (self.num_tokens + self.block_size - 1) // self.block_size
+
+    @property
+    def num_last_block_tokens(self) -> int:
+        return self.num_tokens % self.block_size
+
+    @property
+    def num_cached_blocks(self) -> int:
+        return self.num_cached_tokens // self.block_size
 
     def block(self, i: int) -> List[int]:
         assert 0 <= i < self.num_blocks

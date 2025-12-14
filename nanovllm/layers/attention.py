@@ -97,7 +97,7 @@ class Attention(nn.Module):
         if k_cache.numel() > 0 and v_cache.numel() > 0:
             store_kv_cache(k, v, k_cache, v_cache, context.slot_mapping)
         if context.is_prefill:
-            if context.block_tables is not None:
+            if context.block_tables is not None:  # prefix cache
                 k, v = k_cache, v_cache
             o = flash_attn_varlen_func(
                 q,
