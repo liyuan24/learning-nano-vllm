@@ -6,7 +6,7 @@ from nanovllm.engine.llm_engine import LLMEngine
 def main():
     model_path = "/workspace/huggingface/Qwen3-0.6B"
     tokenizer = AutoTokenizer.from_pretrained(model_path)
-    prompts = ["write me a haiku about AI"]
+    prompts = ["write me a haiku about AI", "tell me a joke"]
     messages = [[{"role": "user", "content": prompt}] for prompt in prompts]
     texts = [
         tokenizer.apply_chat_template(

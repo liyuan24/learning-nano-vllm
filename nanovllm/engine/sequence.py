@@ -73,9 +73,3 @@ class Sequence:
         self.token_ids.append(token_id)
         self.num_tokens += 1
         self.last_token_id = token_id
-
-
-if __name__ == "__main__":
-    sequence_status = SequenceStatus.WAITING
-    print(sequence_status.name)
-    print(sequence_status.value)

@@ -30,7 +30,6 @@ class LLMEngine:
         self.model_runner = ModelRunner(config, 0, self.events)
         self.tokenizer = AutoTokenizer.from_pretrained(config.model)
         config.eos_token_id = self.tokenizer.eos_token_id
-        print(f"EOS token id: {config.eos_token_id}")
         self.scheduler = Scheduler(config)
         atexit.register(
             self.exit
@@ -62,9 +61,7 @@ class LLMEngine:
         outputs = {}
         while not self.scheduler.is_done():
             sequences, is_prefill = self.scheduler.schedule()
-            print(f"scheduling sequences: {sequences}, is_prefill: {is_prefill}")
             token_ids = self.model_runner.call("run", sequences, is_prefill)
-            print(f"generated token ids: {token_ids}")
             self.scheduler.post_processing(sequences, token_ids)
             for seq in sequences:
                 if seq.is_finished:
