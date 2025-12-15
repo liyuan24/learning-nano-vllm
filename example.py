@@ -14,7 +14,7 @@ def main():
         )
         for message in messages
     ]
-    sampling_params = SamplingParams(temperature=0.1, max_tokens=256)
+    sampling_params = SamplingParams(temperature=0.6, max_tokens=256)
     llm_engine = LLMEngine(model_path, tensor_parallel_size=1)
     outputs = llm_engine.generate(texts, sampling_params)
     for text, output in zip(texts, outputs):

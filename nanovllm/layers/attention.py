@@ -70,7 +70,19 @@ def store_kv_cache(
     N, num_kv_heads, head_dim = k.shape
     D = num_kv_heads * head_dim  # the stride of k and v tensor in first dimension
     # launch a triton kernel to store the new k and v tensors in parallel for each token
-    store_kv_cache_kernel[(N,)](k, D, v, D, k_cache, v_cache, slot_mapping, D)
+    # NOTE: make sure to use k.stride(0) and v.stride(0) to get the correct stride for the first dimension
+    # for qwen3, the k and v are derived by
+    #     q, k, v = torch.split(
+    #     x,
+    #     [
+    #         self.num_heads * self.head_dim,
+    #         self.num_kv_heads * self.head_dim,
+    #         self.num_kv_heads * self.head_dim,
+    #     ],
+    #     dim=-1,
+    # )
+    # and split create views for k and v. So the stride of k and v are not D, but much larger.
+    store_kv_cache_kernel[(N,)](k, k.stride(0), v, v.stride(0), k_cache, v_cache, slot_mapping, D)
 
 
 class Attention(nn.Module):
