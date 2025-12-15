@@ -70,4 +70,5 @@ class LLMEngine:
                 if seq.is_finished:
                     outputs[seq.id] = seq.completion_token_ids
                     pbar.update(1)
+        pbar.close()
         return [self.tokenizer.decode(outputs[i]) for i in sorted(outputs.keys())]
