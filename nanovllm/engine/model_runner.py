@@ -9,7 +9,7 @@ import torch
 import torch.distributed as dist
 from nanovllm.models.qwen3 import Qwen3ForCausalLM
 from nanovllm.utils.loader import load_model
-from multiprocessing import SharedMemory
+from multiprocessing.shared_memory import SharedMemory
 
 
 class ModelRunner:
@@ -21,6 +21,7 @@ class ModelRunner:
         self.config = config
         hf_config = config.hf_config
         self.world_size = config.tensor_parallel_size
+        self.rank = rank
         dist.init_process_group(
             backend="nccl",
             init_method="tcp://localhost:2333",
@@ -42,10 +43,10 @@ class ModelRunner:
             rope_theta=hf_config.rope_theta,
             rms_norm_eps=hf_config.rms_norm_eps,
         )
+        self.sampler = Sampler()
         load_model(self.model, config.model)
         self.warmup_model()
         self.allocate_kv_cache()
-        self.sampler = Sampler()
         self.event = event
         if self.world_size > 1:
             if self.rank == 0:
@@ -110,7 +111,7 @@ class ModelRunner:
         )
         seqs = [Sequence([0] * self.config.max_model_len) for _ in range(num_seqs)]
         self.run(seqs, is_prefill=True)
-        torch.empty_cache()
+        torch.cuda.empty_cache()
 
     def allocate_kv_cache(self) -> None:
         config = self.config
@@ -142,7 +143,7 @@ class ModelRunner:
             * hf_config.torch_dtype.itemsize
         )
         config.num_kv_cache_blocks = (
-            total_memory_available_for_kv_cache // kv_cache_block_bytes
+            int(total_memory_available_for_kv_cache) // kv_cache_block_bytes
         )
         assert config.num_kv_cache_blocks > 0
         self.kv_cache = torch.empty(
@@ -169,7 +170,7 @@ class ModelRunner:
         logits = self.model.compute_logits(hidden_states)
         return logits
 
-    def run(self, seqs: List[Sequence], is_prefill: bool) -> None:
+    def run(self, seqs: List[Sequence], is_prefill: bool) -> List[int]:
         input_ids, position_ids = (
             self.prepare_prefilling(seqs) if is_prefill else self.prepare_decoding(seqs)
         )
@@ -177,7 +178,7 @@ class ModelRunner:
         logits = self.run_model(input_ids, position_ids)
         # shape: [n_seqs]
         token_ids = (
-            self.sampler(logits, temperatures).to_list() if self.rank == 0 else None
+            self.sampler(logits, temperatures).tolist() if self.rank == 0 else None
         )
         reset_context()
         return token_ids
@@ -212,7 +213,7 @@ class ModelRunner:
             cu_seqlens_k.append(cu_seqlens_k[-1] + seqlen_k)
             max_seqlen_q = max(max_seqlen_q, seqlen_q)
             max_seqlen_k = max(max_seqlen_k, seqlen_k)
-            if not self.block_table:  # warmup
+            if not seq.block_table:  # warmup
                 continue
             for i in range(seq.num_cached_blocks, seq.num_blocks):
                 start = i * seq.block_size
@@ -286,9 +287,12 @@ class ModelRunner:
         return input_ids, position_ids
 
     def prepare_block_tables(self, seqs: List[Sequence]) -> torch.Tensor:
+        block_table_max_len = max(len(seq.block_table) for seq in seqs)
         block_tables = []
         for seq in seqs:
-            block_tables.append(seq.block_table)
+            block_tables.append(
+                seq.block_table + [-1] * (block_table_max_len - len(seq.block_table))
+            )
         return torch.tensor(block_tables, dtype=torch.int32, pin_memory=True).cuda(
             non_blocking=True
         )

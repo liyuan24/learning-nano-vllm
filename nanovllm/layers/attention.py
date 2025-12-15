@@ -113,7 +113,7 @@ class Attention(nn.Module):
             )
         else:
             o = flash_attn_with_kvcache(
-                q,
+                q.unsqueeze(1),
                 k_cache,
                 v_cache,
                 causal=True,

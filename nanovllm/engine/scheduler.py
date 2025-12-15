@@ -20,6 +20,9 @@ class Scheduler:
         # add sequence for prefilling
         self.waiting.append(sequence)
 
+    def is_done(self) -> bool:
+        return len(self.waiting) == 0 and len(self.running) == 0
+
     def schedule(self) -> Tuple[List[Sequence], bool]:
         """
         schedule sequences for prefilling or decoding from the waiting or running queue.
@@ -42,7 +45,7 @@ class Scheduler:
             self.block_manager.allocate(seq)
             # change the status of the seq
             seq.status = SequenceStatus.RUNNING
-            batched_tokens += len(seq) - seq.num_cached_tokens
+            num_batched_tokens += len(seq) - seq.num_cached_tokens
             # change the queues status
             self.waiting.popleft()
             self.running.append(seq)

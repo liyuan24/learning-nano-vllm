@@ -108,7 +108,11 @@ class BlockManager:
         If the new token needs a new physical block, allocate a new physical block. Otherwise use the last physical block.
         """
         block_table = seq.block_table
+        print(f"may_append length of block table: {len(block_table)}")
         last_block = self.blocks[block_table[-1]]
+        print(f"last block: {last_block.block_id}")
+        print(f"last block hash: {last_block.hash}")
+        print(f"last block token ids: {last_block.token_ids}")
         if len(seq) % self.block_size == 1:
             # need a new physical block
             block_id = self.free_blocks[0]
@@ -126,7 +130,7 @@ class BlockManager:
             self.hash_to_block_id[h] = block_table[-1]
         else:
             # do nothing
-            assert last_block.hash != -1
+            assert last_block.hash == -1
 
     def deallocate(self, seq: Sequence) -> None:
         block_table = seq.block_table

@@ -21,9 +21,12 @@ class Sequence:
         self, token_ids: List[int], sampling_params: SamplingParams = SamplingParams()
     ):
         self.id = next(Sequence.counter)
+        print(f"Sequence id: {self.id}")
         self.token_ids = copy(token_ids)
+        print(f"Prompt token ids: {self.token_ids}")
         self.status = SequenceStatus.WAITING
         self.num_tokens = len(self.token_ids)
+        self.num_prompt_tokens = len(token_ids)
         self.last_token_id = token_ids[-1]
         self.num_cached_tokens = 0
         self.block_table = []  # paged attention
@@ -49,6 +52,18 @@ class Sequence:
     @property
     def num_cached_blocks(self) -> int:
         return self.num_cached_tokens // self.block_size
+
+    @property
+    def is_finished(self) -> bool:
+        return self.status == SequenceStatus.FINISHED
+
+    @property
+    def completion_token_ids(self) -> List[int]:
+        return self.token_ids[self.num_prompt_tokens :]
+
+    @property
+    def prompt_token_ids(self) -> List[int]:
+        return self.token_ids[: self.num_prompt_tokens]
 
     def block(self, i: int) -> List[int]:
         assert 0 <= i < self.num_blocks
