@@ -16,7 +16,7 @@ def main():
     ]
     sampling_params = SamplingParams(temperature=0.1, max_tokens=256)
     llm_engine = LLMEngine(model_path, tensor_parallel_size=1)
-    outputs = llm_engine.generate(prompts, sampling_params)
+    outputs = llm_engine.generate(texts, sampling_params)
     for text, output in zip(texts, outputs):
         print("=" * 100)
         print(f"Prompt: \n{text!r}")

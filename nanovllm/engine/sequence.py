@@ -47,7 +47,7 @@ class Sequence:
 
     @property
     def num_last_block_tokens(self) -> int:
-        return self.num_tokens % self.block_size
+        return self.num_tokens - (self.num_blocks - 1) * self.block_size
 
     @property
     def num_cached_blocks(self) -> int:

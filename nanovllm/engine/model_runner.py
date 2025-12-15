@@ -216,9 +216,9 @@ class ModelRunner:
             if not seq.block_table:  # warmup
                 continue
             for i in range(seq.num_cached_blocks, seq.num_blocks):
-                start = i * seq.block_size
+                start = seq.block_table[i] * seq.block_size
                 if i == seq.num_blocks - 1:
-                    end = start + len(seq) % seq.block_size
+                    end = start + seq.num_last_block_tokens
                 else:
                     end = start + seq.block_size
                 slot_mapping.extend(list(range(start, end)))
